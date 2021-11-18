@@ -66,6 +66,68 @@ public func send<Type, TypeLock>(
     )
 }
 
+@available(iOS, introduced: 15.0, message: "Async/await version of send")
+public func sendAsync<Type, TypeLock>(
+  _ selection: Selection<Type, TypeLock>,
+  to endpoint: String,
+  operationName: String? = nil,
+  headers: HttpHeaders = [:],
+  method: HttpMethod
+) async throws -> GraphQLResult<Type, TypeLock> where TypeLock: GraphQLHttpOperation & Decodable {
+  
+  return try await sendAsync(
+    selection: selection.nonNullOrFail,
+    operationName: operationName,
+    endpoint: endpoint,
+    headers: headers,
+    method: method
+  )
+}
+
+
+
+@available(iOS, introduced: 15.0, message: "Async/await version of send")
+private func sendAsync<Type, TypeLock>(
+  selection: Selection<Type, TypeLock?>,
+  operationName: String?,
+  endpoint: String,
+  headers: HttpHeaders,
+  method: HttpMethod
+) async throws -> GraphQLResult<Type, TypeLock> where TypeLock: GraphQLOperation & Decodable {
+  
+  guard let url = URL(string: endpoint) else {
+    throw SwiftGraphQL.HttpError.badpayload
+    // throw MyNewError.runtimeError("Missing URL for graphql endpoint")
+  }
+  
+  // Construct a GraphQL request.
+  let request = createGraphQLRequest(
+      selection: selection,
+      operationName: operationName,
+      url: url,
+      headers: headers,
+      method: method
+  )
+  //(Data, URLResponse)
+  let (data, response) = try await URLSession.shared.data(for: request, delegate: nil)
+  
+  guard let httpResponse = response as? HTTPURLResponse else {
+    throw SwiftGraphQL.HttpError.badpayload
+    // throw MyNewError.runtimeError("Missing URLResponse")
+  }
+  
+  if !(200 ... 299).contains(httpResponse.statusCode) {
+    throw SwiftGraphQL.HttpError.badpayload
+    // throw MyNewError.runtimeError("Error: Response status code = \(String(httpResponse.statusCode))")
+  }
+    
+  guard let result = try? GraphQLResult(data, with: selection) else {
+    throw SwiftGraphQL.HttpError.badpayload
+    // throw MyNewError.runtimeError("Couldn't unpack data in response")
+  }
+  
+  return result
+}
 
 /// Sends a query to the server using given parameters.
 private func send<Type, TypeLock>(
